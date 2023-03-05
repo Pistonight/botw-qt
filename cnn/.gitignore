@@ -1,0 +1,15 @@
+venv/
+__pycache__/
+models/
+raw/
+data/
+.python-version
+.DS_Store
+*.egg-info
+*.pyc
+*.tflite
+*.png
+*.zip
+*.mp4
+*.mkv
+*.webm

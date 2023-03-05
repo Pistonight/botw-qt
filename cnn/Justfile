@@ -1,0 +1,10 @@
+import-augment DATA:
+    python import.py --raw raw/{{DATA}} --data data/{{DATA}}.txt
+    python import.py --raw raw/{{DATA}}.par --data data/{{DATA}}.par.txt
+    python augment.py --data data/{{DATA}}.txt --data data/{{DATA}}.aug.txt --json config/augment_full.json
+
+make-client MODEL:
+    cp models/{{MODEL}}.tflite ../client/botwqt.tflite
+    cp common.py ../client
+    cp runner.py ../client
+    cp quests.txt ../client

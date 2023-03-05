@@ -1,0 +1,1 @@
+Remove-Item -Path deps,build_x64,release -Recurse -Force -ErrorAction 'SilentlyContinue'

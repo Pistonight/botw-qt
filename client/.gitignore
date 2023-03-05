@@ -1,0 +1,7 @@
+venv/
+__pycache__/
+state.json
+quests.txt
+common.py
+runner.py
+*.tflite
