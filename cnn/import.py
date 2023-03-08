@@ -1,5 +1,5 @@
 import cv2
-from common import encode_image, import_data, export_data, import_labels, clean_text, image_from_resized_frame, parse_args
+from common_util import encode_image, import_data, export_data, import_labels, clean_text, image_from_resized_frame, parse_args
 import os
 from tqdm import tqdm
 import multiprocessing

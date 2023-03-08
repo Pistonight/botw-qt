@@ -1,0 +1,27 @@
+seed: null
+epoch: 10
+batch: 32
+
+data:
+  training:
+  - raw/piston820
+  - raw/piston838
+  validation:
+  - raw/limcube946
+  - raw/limcube946.par
+
+random_translation:
+  height: 0.05
+  width: 0.05
+
+noise: 0.05
+
+convolution:
+  rounds: 2
+  l1: 0
+  l2: 0.0005
+
+dense:
+  size: 256
+  l1: 0
+  l2: 0.0005

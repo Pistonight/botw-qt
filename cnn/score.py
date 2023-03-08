@@ -2,7 +2,7 @@ import cv2
 import os
 import multiprocessing
 from tqdm import tqdm
-from common import get_image_score, image_from_resized_frame, parse_args
+from common_util import get_image_score, image_from_resized_frame, parse_args
 
 
 def get_interval(root_dirs, min_gap):

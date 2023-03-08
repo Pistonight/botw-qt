@@ -1,80 +1,64 @@
 import os
 
-if __name__ == "__main__":
-    if os.name == "nt":
-        print("Running on Windows is not supported. Please use WSL 2")
-        exit(1)
-from common import preinit_tensorflow, parse_args
+from common_util import preinit_tensorflow, parse_args
 if __name__ == "__main__":
     args = parse_args()
     if len(args.data) != 1:
-        print("Must specify exactly 1 data file with --data")
+        print("Must specify exactly 1 data set with --data/-d")
         exit(1)
     if not args.model:
-        print("Must specify a model with --model")
+        print("Must specify a model with --model/-m")
         exit(1)
-    if len(args.json) != 1:
-        print("Please specify exactly one json file wioth --json")
+    if len(args.config) != 1:
+        print("Please specify exactly one output json file with --config/-c")
         exit(1)
 
     preinit_tensorflow()
 import json
 import tensorflow as tf
+import numpy as np
 from tqdm import tqdm
 import multiprocessing
 import math
+from multiprocessing.pool import ThreadPool
+from threading import current_thread
 
-from common import import_labels, import_data, decode_image, input_from_image, measure_str
-from runner import ModelRunner
+from common_util import import_labels, measure_str
+from common_runner import BatchRunner
+from common_dataset import create_dataset
+
+BATCH = 32
 
 def evaluate_model(model_path, data_path, output_path, processes):
     start_time = measure_str()
-    print("Loading Data...")
-    data = import_data(data_path)
     quest_labels = import_labels()
-
-    image_bytes = []
-    labels = []
+    batch_size = processes
+    dataset, total = create_dataset([data_path], batch_size, quest_labels, processes, keep_path=True)
+    runner = BatchRunner(model_path, batch_size)
     
-    for quest_idx, encoded_images in enumerate(data):
-        for encoded in encoded_images:
-            image_bytes.append(encoded)
-            label = [quest_idx]
-            labels.append(label)
 
-    #images, labels, image_bytes = decode_dataset(image_bytes, labels, "validation")
-    #images = []
-    
-    print(f"\rRunning Model with {processes} threads...")
-
+    image_paths = []
+    actual_labels = []
     predicted_labels = []
     predicted_confidences = []
-    temp_image_bytes = []
-    temp_labels = []
-    def task():
-        size_per_process = math.ceil(len(image_bytes) / processes)
-        for i in range(processes):
-            start = size_per_process * i
-            end = size_per_process * (i + 1)
-            yield i, model_path, image_bytes[start:end], labels[start:end]
 
-    with multiprocessing.Pool(processes=processes) as pool:
-        for b, l, predicted_idx, confidence in pool.imap_unordered(run_task, task()):
-            temp_image_bytes.extend(b)
-            temp_labels.extend(l)
-            predicted_labels.extend(predicted_idx)
-            predicted_confidences.extend(confidence)
-    image_bytes = temp_image_bytes
-    labels = temp_labels
+    print("Running model...")
 
+    for image_batch, label_batch, path_batch in tqdm(dataset.as_numpy_iterator(), total=math.ceil(total / batch_size), unit="batch", leave=False):
+        l, c = runner.run_batch(image_batch)
+        for i in range(len(image_batch)):
+            image_paths.append(path_batch[i].decode("utf-8"))
+            actual_labels.append(label_batch[i].item())
+        predicted_labels.extend(l)
+        predicted_confidences.extend(c)
 
     print("\rEvaluating...")
     
     wrong_idx_set = set()
     # run at 0% confidence to find all harmful wrongs
-    eval_at_confidence(predicted_labels, predicted_confidences, labels, 0, wrong_idx_set)
+    eval_at_confidence(len(quest_labels), predicted_labels, predicted_confidences, actual_labels, 0, wrong_idx_set)
     # run at 100% confidence first to see if it's possible to make model all correct
-    correct, harmless_wrong, wrong, useful_correct, labeled_total = eval_at_confidence(predicted_labels, predicted_confidences, labels, 100, wrong_idx_set)
+    correct, harmless_wrong, wrong, useful_corrects, labeled_totals = eval_at_confidence(len(quest_labels), predicted_labels, predicted_confidences, actual_labels, 100, wrong_idx_set)
     if wrong > 0:
         print("BAD: Model cannot have 100% accuracy for any confidence level")
     else:
@@ -83,7 +67,7 @@ def evaluate_model(model_path, data_path, output_path, processes):
         confidence_hi = 100
         while confidence_hi - confidence_lo > 0.01:
             confidence_mid = (confidence_lo + confidence_hi) / 2
-            correct, harmless_wrong, wrong, useful_correct, labeled_total = eval_at_confidence(predicted_labels, predicted_confidences, labels, confidence_mid, wrong_idx_set)
+            correct, harmless_wrong, wrong, useful_corrects, labeled_totals = eval_at_confidence(len(quest_labels), predicted_labels, predicted_confidences, actual_labels, confidence_mid, wrong_idx_set)
             if wrong > 0:
                 # search for a higher confidence
                 confidence_lo = confidence_mid + 0.01
@@ -92,21 +76,42 @@ def evaluate_model(model_path, data_path, output_path, processes):
                 confidence_hi = confidence_mid - 0.01
         # fine tune confidence with linear search
         confidence = confidence_lo
-        correct, harmless_wrong, wrong, useful_correct, labeled_total = eval_at_confidence(predicted_labels, predicted_confidences, labels, confidence, wrong_idx_set)
+        correct, harmless_wrong, wrong, useful_corrects, labeled_totals = eval_at_confidence(len(quest_labels), predicted_labels, predicted_confidences, actual_labels, confidence, wrong_idx_set)
         while wrong > 0:
             confidence += 0.01
-            correct, harmless_wrong, wrong, useful_correct, labeled_total = eval_at_confidence(predicted_labels, predicted_confidences, labels, confidence, wrong_idx_set)
+            correct, harmless_wrong, wrong, useful_corrects, labeled_totals = eval_at_confidence(len(quest_labels), predicted_labels, predicted_confidences, actual_labels, confidence, wrong_idx_set)
         print()
+        confidence = min(confidence, 100)
         print(f"Minimum safe confidence threshold: {confidence}")
 
-    total = len(labels)
+    total = len(actual_labels)
 
     print(f"Total: {total}")
     print(f"Correct: {correct}")
     print(f"Harmless Wrong: {harmless_wrong}")
     print(f"Wrong: {wrong}")
+    print()
+    useful_percentages = [ (i, 0) if labeled_totals[i] == 0 else (i, useful_corrects[i] / labeled_totals[i]) for i in range(1, len(quest_labels)) ]
+    print("Lowest 5 Quests:")
+    useful_percentages.sort(key=lambda x: x[1])
+    for i in range(5):
+        idx, percentage = useful_percentages[i]
+        print(f"{quest_labels[idx]}: {percentage}")
+    print()
+    print("Highest 5 Quests:")
+    useful_percentages.sort(key=lambda x: x[1], reverse=True)
+    for i in range(5):
+        idx, percentage = useful_percentages[i]
+        print(f"{quest_labels[idx]}: {percentage}")
+    print()
+    print("Median 5 Quests:")
+    for i in range(len(useful_percentages)//2-2, len(useful_percentages)//2+3):
+        idx, percentage = useful_percentages[i]
+        print(f"{quest_labels[idx]}: {percentage}")
+    print()
     print(f"Accuracy: {correct / total}")
-    print(f"Useful: {useful_correct}/{labeled_total}")
+    print(f"Usefulness: {sum(useful_corrects) / sum(labeled_totals)}")
+    print(f"Overall score: {sum(useful_corrects) / sum(labeled_totals) * correct / total}")
     print()
     print(f"{len(wrong_idx_set)} wrong predictions were detected")
 
@@ -114,16 +119,15 @@ def evaluate_model(model_path, data_path, output_path, processes):
         wrongs = []
 
         for i in wrong_idx_set:
-            actual_idx = labels[i][0]
+            actual_idx = actual_labels[i]
             predicted_idx = predicted_labels[i]
             predicted_confidence = predicted_confidences[i]
             harmful = bool(predicted_idx != 0 and predicted_idx != actual_idx)
             wrongs.append({
                 "harmful": harmful,
-                "image": image_bytes[i],
+                "image": image_paths[i],
                 "predicted": quest_labels[predicted_idx],
                 "confidence": predicted_confidence,
-                "actual": quest_labels[actual_idx]
             })
 
         json.dump(wrongs, f, indent=2)
@@ -131,28 +135,18 @@ def evaluate_model(model_path, data_path, output_path, processes):
     print(f"Wrongs saved to {output_path}")
     print(f"Done in {measure_str(start_time)}")
 
-def run_task(args):
-    runner_idx, model_path, image_bytes, labels = args
-    runner = ModelRunner(model_path)
-    predicted_labels = []
-    predicted_confidences = []
-    for encoded in tqdm(image_bytes, leave=False, desc=f"Thread {runner_idx}", position=runner_idx):
-        predicted_idx, confidence = runner.run_one(input_from_image(decode_image(encoded)))
-        predicted_labels.append(predicted_idx)
-        predicted_confidences.append(confidence)
-    return image_bytes, labels, predicted_labels, predicted_confidences
 
-def eval_at_confidence(predicted_labels, predicted_confidences, actual_labels, confidence, wrong_idx_set):
-    print(f"Testing confidence = {confidence}")
+def eval_at_confidence(num_labels, predicted_labels, predicted_confidences, actual_labels, confidence, wrong_idx_set):
+    #print(f"Testing confidence = {confidence}")
     correct = 0
-    useful_correct = 0
-    labeled_total = 0
+    useful_corrects = [0] * num_labels
+    labeled_totals = [0] * num_labels
     harmless_wrong = 0
     wrong = 0
     for i in range(len(actual_labels)):
-        actual_idx = actual_labels[i][0]
+        actual_idx = actual_labels[i]
         if actual_idx != 0:
-            labeled_total += 1
+            labeled_totals[actual_idx] += 1
         predicted_idx = predicted_labels[i]
         predicted_confidence = predicted_confidences[i]
         # If not confident enough, predict not quest banner
@@ -162,7 +156,7 @@ def eval_at_confidence(predicted_labels, predicted_confidences, actual_labels, c
         if actual_idx == predicted_idx:
             correct += 1
             if actual_idx != 0:
-                useful_correct += 1
+                useful_corrects[actual_idx] += 1
         elif predicted_idx == 0:
             harmless_wrong += 1
             # we need to check if the model actually predicted wrong, or not confident enough
@@ -173,12 +167,10 @@ def eval_at_confidence(predicted_labels, predicted_confidences, actual_labels, c
             # incorrect, and predicted a wrong quest banner
             wrong += 1
             wrong_idx_set.add(i)
-    return correct, harmless_wrong, wrong, useful_correct, labeled_total
+    return correct, harmless_wrong, wrong, useful_corrects, labeled_totals
 
 
 if __name__ == "__main__":
-    if args.processes > 1:
-        # Only use CPU, since we don't have enough GPUs for multi processing
-        tf.config.set_visible_devices([], 'GPU')
+   
     
-    evaluate_model(args.model, args.data[0], args.json[0], args.processes)
+    evaluate_model(args.model, args.data[0], args.config[0], args.processes)

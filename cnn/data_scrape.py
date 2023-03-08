@@ -1,4 +1,4 @@
-from common import parse_args, preinit_tensorflow
+from common_util import parse_args, preinit_tensorflow
 
 if __name__ == "__main__":
     args = parse_args()
@@ -26,8 +26,8 @@ import math
 import hashlib
 import tensorflow as tf
 from tqdm import tqdm
-from runner import ModelRunner
-from common import import_labels, encode_image, image_from_whole_frame, get_image_score, is_score_valid, measure_str, input_from_image
+from common_runner import ModelRunner
+from common_util import import_labels, encode_image, image_from_whole_frame, get_image_score, is_score_valid, measure_str, input_from_image
 
 # show the frame for debugging purposes
 SHOW = False
@@ -89,7 +89,7 @@ def scrape_vod(vod_path, model_path, output_path, crop, threads):
             pass
     print("\rCondensing...")
     condense_root_directory(f"{output_path}_unchecked")
-    create_raw(f"{output_path}_partial")
+    create_raw(f"{output_path}.par")
     print(f"Done in {measure_str(start)}")
     os.makedirs(f"{output_path}/none", exist_ok=True)
 

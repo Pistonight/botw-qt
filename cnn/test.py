@@ -1,7 +1,7 @@
 TF_LOGGING = False # Set to true to enable TensorFlow logging
 import sys
 import os
-from common import import_labels, image_from_whole_frame, image_from_cropped_frame, get_image_score, is_score_valid, input_from_image
+from common_util import import_labels, image_from_whole_frame, image_from_cropped_frame, get_image_score, is_score_valid, input_from_image
 import cv2
 
 # Quest banner
@@ -26,7 +26,7 @@ def test_image(should_crop, image_path, model_path):
     print("Initializing TensorFlow...")
     import tensorflow as tf
     tf.config.set_visible_devices([], 'GPU')
-    from runner import ModelRunner
+    from common_runner import ModelRunner
     runner = ModelRunner(model_path)
     quest_labels = import_labels()
     predicted, confidence = runner.run_one(input_from_image(image))

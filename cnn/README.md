@@ -17,42 +17,15 @@ Will be available soon
 ## Setup
 To setup the repo for scraping or training, please follow these steps.
 
-### CUDA and cuDNN
-If you have an NVIDIA GPU compatible with CUDA 11, you can setup CUDA for faster training. Not required if you are scraping or plan to train with CPU.
 
-The steps below covers how to setup CUDA with TensorFlow in WSL 2. If you are running another operating system, please refer to the official documentation.
-
-Note that TensorFlow 2.11 is only compatible with CUDA 11, not 12.
-
-1. Prerequisite: Have WSL 2 installed and running, and have the latest Nvidia Game Ready drivers installed in Windows
-1. Download the CUDA Toolkit 11.8.0 from [Nvidia](https://developer.nvidia.com/cuda-toolkit-archive). You need to sign up for the Nvidia Developer Program to download the toolkit. **Select `Linux` - `x86_64` - `WSL-Ubuntu`** for the architecture.
-1. Once installed, you should have CUDA at `/usr/local/cuda-11.8` and a symlink at `/usr/local/cuda`
-1. Download cuDNN from [Nvidia](https://developer.nvidia.com/rdp/cudnn-download) for CUDA 11.x. **Select Local Installer for Linux x86_64 (Tar)**
-1. Extract the downloaded file
-    ```
-    tar -xf cudnn-linux-x64-8.8.0.121_cuda11-archive.tar.xz
-    ```
-1. Copy the include and lib to the cuda directory (Replace `<path>` with the path to the extracted files)
-    ```
-    sudo cp -P <path>/include/* /usr/local/cuda/include
-    sudo cp -P <path>/lib64/* /usr/local/cuda/lib64
-    ```
-1. Run `sudo ldconfig`
-1. Run `ldconfig -p | grep libcuda`. Make sure you have `libcuda.so.1` and `libcudart.so.11` (or `libcudart.so.11.0`) in the output
-1. Run `ldconfig -p | grep libcudnn`. Make sure you have `libcudnn.so.8` in the output
 
 ### TensorFlow
-If you plan to use GPU to train, follow the steps above to setup CUDA and cuDNN before setting up TensorFlow.
 
 1. Install the requirements (setup a venv if wanted)
     ```
     pip install -r requirements.txt
     ```
-1. To check if you are using CPU or GPU with TensorFlow, run the following
-    ```
-    python -c "import tensorflow as tf; print(tf.config.list_physical_devices())"
-    ```
-    You should see your CPU, and if you have CUDA setup, you should see your GPU as well.
+
 
 ## Scraping
 Instructions for scraping data from VODs

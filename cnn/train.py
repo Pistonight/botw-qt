@@ -1,77 +1,202 @@
 import os
 
-if __name__ == "__main__":
-    if os.name == "nt":
-        print("Running on Windows is not supported. Please use WSL 2")
-        exit(1)
+# if __name__ == "__main__":
+#     if os.name == "nt":
+#         print("Running on Windows is not supported. Please use WSL 2")
+#         exit(1)
     
-from common import preinit_tensorflow, parse_args
+from common_util import preinit_tensorflow, parse_args
 
 if __name__ == "__main__":
     args = parse_args()
-    if not args.data:
-        print("Need at least 1 training data set with --data")
-        exit(1)
-    if not args.data2:
-        print("Need at least 1 validation data set with --data2")
-        exit(1)
-    if len(args.json) != 1:
-        print("Need exactly 1 json model file with --json")
+    if len(args.config) != 1:
+        print("Need exactly 1 training yaml config file with --config/-c")
         exit(1)
     preinit_tensorflow(args.processes if args.processes > 1 else None)
 
 
 import tensorflow as tf
-from keras import models, losses, utils
+from keras import models, losses, regularizers, layers
 import numpy as np
 from tqdm.keras import TqdmCallback
 import math
 import json
+import yaml
+import hashlib
 from datetime import datetime
 import multiprocessing
 from tqdm import tqdm
 
-from common import decompress_encoded_image, decode_decompressed_image_to_input, import_data, input_from_image, gen_seed, INPUT_DIM
 
-SEED = None # leave as None to use a random seed
-BATCH_SIZE = 16
-EPOCHS = 5
+from common_util import import_labels, gen_seed, INPUT_DIM
+from common_dataset import create_dataset
 
-class DataSet(utils.Sequence):
-    def __init__(self, image_bytes, labels, batch_size, shuffle=False):
-        with multiprocessing.Pool() as pool:
-            self.image_decompressed_bytes = pool.map(decompress_encoded_image, tqdm(image_bytes, desc="Decompressing images", leave=False))
-        self.labels = labels
-        self.total = len(self.image_decompressed_bytes)
-        assert len(self.image_decompressed_bytes) == len(self.labels)
-        self.data_order = np.arange(self.total, dtype=np.int32)
-        self.shuffle = shuffle
-        self.batch_size = batch_size
-        self.on_epoch_end()
 
-    def __len__(self):
-        return math.ceil(self.total / self.batch_size)
+def create_model(config, num_labels) -> models.Sequential:
+    model = models.Sequential()
+    # Randomly shift the image
+    model.add(
+        layers.RandomTranslation(
+            input_shape=(INPUT_DIM[1], INPUT_DIM[0], 1),
+            height_factor=config["random_translation"]["height"],
+            width_factor=config["random_translation"]["width"],
+            fill_mode='nearest',
+            interpolation='bilinear',
+            seed=None,
+        )
+    )
+    # Randomly add noise
+    model.add(
+        layers.GaussianNoise(
+            0.1
+        )
+    )
+    # Convolutional layers
+    for _ in range(config["convolution"]["rounds"]):
+        model.add(
+            layers.Conv2D(
+                2,
+                (3, 3),
+                activation='relu',
+                activity_regularizer=regularizers.L1L2(
+                    l1=config["convolution"]["l1"],
+                    l2=config["convolution"]["l2"]
+                )
+            )
+        )
+        model.add(layers.MaxPooling2D((2, 2)))
+    model.add(layers.Flatten())
+    # Dense layer
+    model.add(
+        layers.Dense(
+            config["dense"]["size"],
+            activation='relu',
+            activity_regularizer=regularizers.L1L2(
+                l1=config["dense"]["l1"],
+                l2=config["dense"]["l2"]
+            )
+        )
+    )
+    # Output layer
+    model.add(layers.Dense(num_labels))
 
-    def __getitem__(self, index):
-        batch_indices = self.data_order[index * self.batch_size:(index + 1) * self.batch_size]
-        return self.__data_generation(batch_indices)
+    model.compile(
+        optimizer='adam',
+        loss=losses.SparseCategoricalCrossentropy(from_logits=True),
+        metrics=['accuracy']
+    )
+
+    model.summary()
+
+    return model
+
+# def create_data(config, name, labels: list[str], workers=1) -> tf.data.Dataset:
+#     if workers == 1:
+#         workers = tf.data.AUTOTUNE
+#    # os.makedirs("cache", exist_ok=True)
+#     #sha256 = hashlib.sha256()
+
+#     image_paths = []
+#     image_labels = []
+#     for dataset_path in config["data"][name]:
+#         # Process each data set
+#         for subpath in os.listdir(dataset_path):
+#             # subpath is quest name, lowercase, cleaned
+#             if subpath in labels:
+#                 label = labels.index(subpath)
+#                 for image_subpath in os.listdir(os.path.join(dataset_path, subpath)):
+#                     if image_subpath.endswith(".png"):
+#                         image_full_path = os.path.join(dataset_path, subpath, image_subpath)
+#                         #sha256.update(image_full_path.encode("utf-8"))
+#                         image_paths.append(image_full_path)
+#                         image_labels.append(label)
+#     # signature = sha256.hexdigest()
+#     print(f"Loaded {len(image_paths)} images for {name} data set")
+    
+#     # Create a dataset
+#     dataset = tf.data.Dataset.from_tensor_slices((image_paths, image_labels))
+#     # Shuffle all images
+#     dataset = dataset.shuffle(len(image_paths), reshuffle_each_iteration=True)
+
+#     # Load image as binary array
+#     @tf.function
+#     def read_image(image_path, label):
+#         image_content = tf.io.read_file(image_path)
+#         image = tf.image.decode_png(image_content, channels=1) / 255
+#         return image, label
+#     dataset = dataset.map(read_image, num_parallel_calls=workers)
+#     #dataset = dataset.cache()
+#     # Batch images
+#     dataset = dataset.batch(config["batch"])
+#     # Fix shape after batching, since tf cannot infer the shape
+#     def fix_shape(x,y):
+#         x.set_shape([None, None, None, 1])
+#         y.set_shape([None])
+#         return x, y
+#     dataset = dataset.map(fix_shape)
+#     # Prefetch data
+#     dataset = dataset.prefetch(tf.data.AUTOTUNE)
+#     return dataset
+
+# def create_dataset(image_paths, batch_size, seed=None, workers=tf.data.AUTOTUNE):
+#     # get the parent directory of the first image
+#     parent_dir = os.path.basename(os.path.dirname(image_paths[0]))
+
+    # def get_data(i):
+    #     #i = i.numpy()
+    #     return dataset[i]
+    # def fix_shape(x,y):
+    #     x.set_shape([None, None, None, 1])
+    #     y.set_shape([None])
+    #     return x,y
+
+    # z = list(range(len(dataset)))
+    # ds = tf.data.Dataset.from_generator(lambda: z, tf.uint32)
+    # if seed:
+    #     ds = ds.shuffle(len(dataset), seed=seed, reshuffle_each_iteration=True)
+    # ds = ds.map(get_data, num_parallel_calls=workers)
+    # ds = ds.batch(batch_size)
+    # ds = ds.map(fix_shape)
+    # ds = ds.prefetch(tf.data.AUTOTUNE)
+    # return ds
+
+# class DataSetAdapter(utils.Sequence):
+#     def __init__(self, dataset, batch_size, shuffle=False):
+#         self.dataset = dataset
+#         self.data_order = np.arange(len(self.dataset), dtype=np.int32)
+#         self.shuffle = shuffle
+#         self.batch_size = batch_size
+#         self.on_epoch_end()
+
+#     def __len__(self):
+#         return math.ceil(len(self.dataset) / self.batch_size)
+
+#     def __getitem__(self, index):
+#         batch_indices = self.data_order[index * self.batch_size:(index + 1) * self.batch_size]
+#         return self.__data_generation(batch_indices)
         
-    def __data_generation(self, batch_indices):
-        batch_images = np.empty((self.batch_size, INPUT_DIM[1], INPUT_DIM[0], 1), dtype=np.float32)
-        batch_labels = np.empty((self.batch_size), dtype=int)
+#     def __data_generation(self, batch_indices):
+#         batch_images = np.empty((len(batch_indices), INPUT_DIM[1], INPUT_DIM[0], 1), dtype=np.float32)
+#         batch_labels = np.empty((len(batch_indices)), dtype=int)
 
-        for batch_item_idx, data_i in enumerate(batch_indices):
-            batch_images[batch_item_idx,] = decode_decompressed_image_to_input(self.image_decompressed_bytes[data_i])
-            batch_labels[batch_item_idx] = self.labels[data_i]
-        return batch_images, batch_labels
+#         for batch_item_idx, data_i in enumerate(batch_indices):
+#             entry = self.dataset[data_i]
+#             batch_images[batch_item_idx,] = entry.get_input()
+#             batch_labels[batch_item_idx] = entry.label
+#         return batch_images, batch_labels
 
-    def on_epoch_end(self):
-        if self.shuffle:
-            np.random.shuffle(self.data_order)
+#     def on_epoch_end(self):
+#         if self.shuffle:
+#             np.random.shuffle(self.data_order)
 
-def run(model_config_path, training_data_paths, validation_data_paths, workers):
+def run(config_path, workers):
     start_time = datetime.now()
-    if SEED is None:
+    #print(f"Using {workers} workers")
+    
+    with open(config_path, "r") as f:
+        config = yaml.load(f, Loader=yaml.FullLoader)
+    seed = config["seed"]
+    if seed is None:
         seed = gen_seed()
         for _ in range(100):
             # attempt to regenerate seed up to 100 times
@@ -79,101 +204,85 @@ def run(model_config_path, training_data_paths, validation_data_paths, workers):
                 seed = gen_seed()
                 continue
             break
-    else:
-        seed = SEED
+        config["seed"] = seed
+
     np.random.seed(seed)
-    parameters = {
-        "seed": seed,
-        "epochs": EPOCHS,
-        "training_data": training_data_paths,
-        "validation_data": validation_data_paths,
-        "model": model_config_path,
-    }
+    tf.random.set_seed(seed)
+    print(f"Seed: {seed}")
+
+    labels = import_labels()
 
     print(f"\rLoading data...")
-    training_dataset, validation_dataset = create_dataset(training_data_paths, validation_data_paths, BATCH_SIZE)
+    training_dataset, total= create_dataset(config["data"]["training"], config["batch"], labels, workers)
+    validation_dataset, _ = create_dataset(config["data"]["validation"], config["batch"], labels, workers)
+
+    #validation_dataset = DataSets([ DataSet(labels, validation_data) for validation_data in validation_data_config ])
+    
+    # training_dataset, validation_dataset = create_dataset(training_data_paths, validation_data_paths, BATCH_SIZE)
 
     # image shape: (size, height, width, channels=1)
     # label shape: (size)
 
-    print(f"\rLoading model config...")
-    with open(model_config_path, "r") as f:
-        model = models.model_from_json(f.read())
-
-    model.compile(
-        optimizer='adam',
-        loss=losses.SparseCategoricalCrossentropy(from_logits=True),
-        metrics=['accuracy']
-    )
+    print(f"\rLoading model...")
+    model = create_model(config, len(labels))
     
-    print(f"\rTraining using {training_dataset.total} training images and {validation_dataset.total} validation images...")
-    
+    print(f"\rTraining...")
+    epochs = config["epoch"]
     model.fit(
         training_dataset,
-        epochs=EPOCHS, 
-        shuffle=False,
+        epochs=epochs, 
         validation_data=validation_dataset,
         verbose=0, # turning off default keras output and using TqdmCallback instead
-        callbacks=[TqdmCallback(epochs=EPOCHS, batch_size=BATCH_SIZE, data_size=training_dataset.total, leave=False)],
-        use_multiprocessing=workers>1,
-        workers=workers
+        callbacks=[TqdmCallback(epochs=epochs, batch_size=config["batch"], data_size=total, leave=False)],
+        # use_multiprocessing=workers>1,
+        # workers=workers
     )
 
-    print("\rValidating...")
-    test_loss, test_acc = model.evaluate(
-        validation_dataset,
-        verbose=2,
-        use_multiprocessing=workers>1,
-        workers=workers
-    )
-    print(f"\rAccuracy: {test_acc}")
-    parameters["accuracy"] = test_acc
-    parameters["loss"] = test_loss
-
-    print(f"Saving model with seed {seed}...")
-    save_model(model, seed, parameters)
+    print(f"\rSaving model with seed {seed}...")
+    save_model(model, config)
     delta = datetime.now() - start_time
     print(f"Done in {str(delta)}")
 
 
-def create_dataset(training_data_paths, validation_data_paths, batch_size):
-    non_validation_image_data = []
-    non_validation_labels = []
-    validation_image_data = []
-    validation_labels = []
+# def create_dataset(training_data_paths, validation_data_paths, batch_size):
+#     non_validation_image_data = []
+#     non_validation_labels = []
+#     validation_image_data = []
+#     validation_labels = []
 
-    for data_path in training_data_paths:
-        import_dataset_from(data_path, non_validation_image_data, non_validation_labels)
-    for data_path in validation_data_paths:
-        import_dataset_from(data_path, validation_image_data, validation_labels)
+#     for data_path in training_data_paths:
+#         import_dataset_from(data_path, non_validation_image_data, non_validation_labels)
+#     for data_path in validation_data_paths:
+#         import_dataset_from(data_path, validation_image_data, validation_labels)
 
-    total = len(non_validation_image_data) + len(validation_image_data)
+#     total = len(non_validation_image_data) + len(validation_image_data)
 
-    # Make training set a multiple of batch size
-    extras = len(non_validation_image_data) % batch_size
-    for _ in range(extras):
-        i = np.random.randint(0, len(non_validation_image_data) - 1)
-        validation_image_data.append(non_validation_image_data[i])
-        validation_labels.append(non_validation_labels[i])
-        del non_validation_image_data[i]
-        del non_validation_labels[i]
+#     # Make training set a multiple of batch size
+#     extras = len(non_validation_image_data) % batch_size
+#     for _ in range(extras):
+#         i = np.random.randint(0, len(non_validation_image_data) - 1)
+#         validation_image_data.append(non_validation_image_data[i])
+#         validation_labels.append(non_validation_labels[i])
+#         del non_validation_image_data[i]
+#         del non_validation_labels[i]
 
-    assert len(non_validation_image_data) % batch_size == 0
-    assert len(non_validation_image_data) + len(validation_image_data) == total
+#     assert len(non_validation_image_data) % batch_size == 0
+#     assert len(non_validation_image_data) + len(validation_image_data) == total
 
-    return DataSet(non_validation_image_data, non_validation_labels, batch_size, shuffle=True), DataSet(validation_image_data, validation_labels, batch_size, shuffle=False)
+#     return DataSet(non_validation_image_data, non_validation_labels, batch_size, shuffle=True), DataSet(validation_image_data, validation_labels, batch_size, shuffle=False)
     
-def import_dataset_from(data_path, out_image_data, out_labels):
-    data = import_data(data_path)
+# def import_dataset_from(data_path, out_image_data, out_labels):
+#     data = import_data(data_path)
 
-    for quest_idx, encoded_images in enumerate(data):
-        for encoded in encoded_images:
-            image_bytes = bytes(encoded, "utf-8")
-            label = quest_idx
-            out_image_data.append(image_bytes)
-            out_labels.append(label)
+#     for quest_idx, encoded_images in enumerate(data):
+#         for encoded in encoded_images:
+#             image_bytes = bytes(encoded, "utf-8")
+#             label = quest_idx
+#             out_image_data.append(image_bytes)
+#             out_labels.append(label)
 
-def save_model(keras_model: models.Sequential, seed, parameters):
+def save_model(keras_model: models.Sequential, config):
+    seed = config["seed"]
     # Convert the model.
     converter = tf.lite.TFLiteConverter.from_keras_model(keras_model)
     tflite_model = converter.convert()
@@ -183,11 +292,12 @@ def save_model(keras_model: models.Sequential, seed, parameters):
     with open(model_path(seed), 'wb') as f:
         f.write(tflite_model)
 
-    with open(f"models/{seed}.param.json", "w") as f:
-        json.dump(parameters, f, indent=2)
+    with open(f"models/{seed}.yaml", "w") as f:
+        yaml.dump(config, f)
 
 def model_path(seed):
     return f"models/{seed}.tflite"
 
 if __name__ == "__main__":
-    run(args.json[0], args.data, args.data2, args.processes)
+    tf.config.set_visible_devices([], 'GPU')
+    run(args.config[0], args.processes)

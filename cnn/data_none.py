@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 from tqdm import tqdm
 import multiprocessing
-from common import INPUT_DIM, image_from_resized_frame, parse_args
+from common_util import INPUT_DIM, image_from_resized_frame, parse_args
 def process_directory(directory):
     none_directory = os.path.join(directory, "none")
     mislabel_directory = os.path.join(directory, "__mislabel__")
