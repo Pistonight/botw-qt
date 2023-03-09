@@ -26,12 +26,11 @@ def gen_seed():
 class Args:
     model = None
     video = None
-    #raw = []
     rect = []
     data = []
-    #data2 = []
     processes = 1
     config = []
+    flags = set()
 
 def parse_args(arg_list=None):
     if not arg_list:
@@ -50,9 +49,6 @@ def parse_args(arg_list=None):
         elif arg_key in ["--video"]:
             # Specify a video file
             args.video = arg_value
-        # elif arg_key in ["--raw"]:
-        #     # Specify a raw image directory
-        #     args.raw.append(arg_value)
         elif arg_key in ["--rect"]:
             # Specify rectangles
             try:
@@ -63,20 +59,20 @@ def parse_args(arg_list=None):
                 raise ValueError(f"Not a valid rectangle: {arg_value} (need x,y,w,h)")
             args.rect.append(rect)
         elif arg_key in ["--data", "-d"]:
-            # Specify a data file
+            # Specify a data directory
             args.data.append(arg_value)
-        # elif arg_key in ["--data2", "-d2"]:
-        #     # Specify a data file
-        #     args.data2.append(arg_value)
         elif arg_key in ["--processes", "-j"]:
-            # Specify the number of parallel processes to use
+            # Specify the degree of parallelism
             try:
                 args.processes = int(arg_value)
             except ValueError:
                 raise ValueError(f"Expected integer for argument {arg_key}, got {arg_value}")
         elif arg_key in ["--config", "-c"]:
-            # Specify a json file
+            # Specify a config file
             args.config.append(arg_value)
+        elif arg_key in ["--enable", "-e"]:
+            # Enable a flag
+            args.flags.add(arg_value)
         else:
             raise ValueError(f"Unknown argument: {arg_key}")
 

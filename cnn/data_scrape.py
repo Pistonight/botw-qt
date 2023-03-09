@@ -26,8 +26,8 @@ import math
 import hashlib
 import tensorflow as tf
 from tqdm import tqdm
-from common_runner import ModelRunner
-from common_util import import_labels, encode_image, image_from_whole_frame, get_image_score, is_score_valid, measure_str, input_from_image
+from common_runner import Runner
+from common_util import import_labels, image_from_whole_frame, get_image_score, is_score_valid, measure_str
 
 # show the frame for debugging purposes
 SHOW = False

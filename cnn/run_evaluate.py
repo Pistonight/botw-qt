@@ -1,39 +1,30 @@
-import os
-
 from common_util import preinit_tensorflow, parse_args
 if __name__ == "__main__":
     args = parse_args()
-    if len(args.data) != 1:
-        print("Must specify exactly 1 data set with --data/-d")
-        exit(1)
     if not args.model:
         print("Must specify a model with --model/-m")
         exit(1)
-    if len(args.config) != 1:
-        print("Please specify exactly one output json file with --config/-c")
+    if not args.config:
+        print("Please specify output json file with --config/-c")
         exit(1)
 
     preinit_tensorflow()
 import json
-import tensorflow as tf
-import numpy as np
+import yaml
 from tqdm import tqdm
-import multiprocessing
 import math
-from multiprocessing.pool import ThreadPool
-from threading import current_thread
 
 from common_util import import_labels, measure_str
 from common_runner import BatchRunner
 from common_dataset import create_dataset
 
-BATCH = 32
-
-def evaluate_model(model_path, data_path, output_path, processes):
+def evaluate_model(model_path, data_paths, output_path, processes):
     start_time = measure_str()
     quest_labels = import_labels()
     batch_size = processes
-    dataset, total = create_dataset([data_path], batch_size, quest_labels, processes, keep_path=True)
+
+    
+    dataset, total = create_dataset(data_paths, batch_size, quest_labels, processes, keep_path=True)
     runner = BatchRunner(model_path, batch_size)
     
 
@@ -130,6 +121,8 @@ def evaluate_model(model_path, data_path, output_path, processes):
                 "confidence": predicted_confidence,
             })
 
+        wrongs.sort(key=lambda x: x["confidence"], reverse=True)
+
         json.dump(wrongs, f, indent=2)
 
     print(f"Wrongs saved to {output_path}")
@@ -171,6 +164,19 @@ def eval_at_confidence(num_labels, predicted_labels, predicted_confidences, actu
 
 
 if __name__ == "__main__":
-   
+    output_path = args.config[0]
+    data_paths = set()
+    for data_path in args.data:
+        data_paths.add(data_path)
+    use_training_data = "use-training-data" in args.flags
+    for config_path in args.config[1:]:
+        with open(config_path, "r") as f:
+            config = yaml.load(f, Loader=yaml.FullLoader)
+        for data_path in config["data"]["validation"]:
+            data_paths.add(data_path)
+        if use_training_data:
+            for data_path in config["data"]["training"]:
+                data_paths.add(data_path)
+
     
-    evaluate_model(args.model, args.data[0], args.config[0], args.processes)
+    evaluate_model(args.model, list(data_paths), output_path, args.processes)

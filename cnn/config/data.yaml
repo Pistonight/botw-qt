@@ -1,0 +1,12 @@
+data:
+  training:
+  - data/piston820
+  - data/piston820.par
+  - data/piston838
+  - data/piston838.par
+  - data/limcube946
+  - data/limcube946.par
+
+  validation:
+  - data/newborn940
+  - data/newborn940.par
