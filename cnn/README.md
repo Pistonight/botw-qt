@@ -20,6 +20,8 @@ It's also recommended to use a python virtual environment (venv) for this projec
 
 You can either use pyenv or the built-in venv module to setup a venv. pyenv is Recommened for Linux/Mac and the built-in venv is recommended for Windows.
 
+**NOTE: You can install CUDA/cuDNN if you'd like. However, in my testing, the model is too small to benefit from GPU acceleration.**
+
 - pyenv:
     ```
     pyenv virtualenv 3.10.9 botw-qt
@@ -51,24 +53,23 @@ pip install -r requirements.txt
 ## Scraping
 Instructions for scraping data from VODs
 
-### Requirements
-1. Download the VOD
-1. Download the latest tflite model from the release page
-
-### Steps
-**Instructions are incomplete/outdated**
-`data_scrape.py` and `data_none.py` are used for dataset generation from VODs.
-
-1. Run `data_scrape.py` to generate images from the VOD. Replace `<dataset_name>` with `<runner><time>`, such as `piston820` or `bings1532`. Use `-j` to specify the number of processes to use.
+1. Download the VOD. Many formats are supported, such as `.webm`, `.mp4`, `.mkv`, etc. For best result, please either use 720p or 1080p. I recommend using [yt-dlp](https://github.com/yt-dlp/yt-dlp) for downloading the VOD.
+1. Have a `.tflite` model.
+1. Run `run_scrape.py` to generate images from the VOD. Replace `<dataset_name>` with `<runner><time>`, such as `piston820` or `bings1532`. Use `-j` to specify the number of processes to use.
     ```
-    python data_scrape.py -j 16 --model path/to/model --video path/to/vod --raw raw/<dataset_name>
+    python run_scrape.py -j 16 -m path/to/model --video path/to/vod -d data/<dataset_name>
     ```
     If you need to crop the vod:
     ```
-    python data_scrape.py -j 16 --model path/to/model --video path/to/vod --raw raw/<dataset_name> --rect "<x>,<y>,<w>,<h>"
+    python run_scrape.py -j 16 -m path/to/model --video path/to/vod -d data/<dataset_name> --rect "<x>,<y>,<w>,<h>"
     ```
-    
-1. Manually check the images labelled with a quest in `raw/<dataset_name>_unchecked` to make sure the images are correct. Move the images labelled with a quest to `raw/<dataset_name>`. See [Manual Scrubbing](#manual-scrubbing) for more details.
+    This script does the following automatically:
+    1. Grab sample frames from video, crop it down to the quest banner, and save it as `png` files. By default, it grabs every 3rd frame. The images are saved at `data/<dataset_name>.tmp`
+    1. Remove images that are exactly the same
+    1. Run the model on the images to predict the quest. The images are saved at `data/<dataset_name>/<quest>`. By default it uses a condifence threshold of 97.
+1. Manually check the following and move the images accordingly
+    1. `data/<dataset_name>/<quest>`: Make sure all quest banner images are good quality. Follow the [Checking the data](#checking-the-data) section for more details.
+    2. `data/<dataset_name>.tmp`: Manually label these and move the images accordingly. Delete this folder once done.
 
 ### Checking the data
 Images are split into 3 categories:
@@ -81,7 +82,7 @@ Images are split into 3 categories:
     - Large chunks of words are obstructed, but the quest can still be inferred (like `Di<unreadable>ris` is `Divine Beast Vah Naboris`)
     - Other reason that the quest can be inferred, but the image should not be used for training.
     
-    Partial images are only used for validation, not training.
+    Partial images are treated as not quest banners in training.
 3. Bad quality images (`<dataset>/<none>`). These ones are banner images that are unreadable. These are used for both training and validation. For example:
     - The image looks like words, but a quest cannot be inferred
     - Critical parts of the quest are obstructed, and the quest cannot be inferred (like `Divine Beast Vah <unreadable>`)

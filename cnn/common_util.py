@@ -1,21 +1,13 @@
 import sys
-import numpy as np
 import os
 import re
-import cv2
 import time
 import math
 from datetime import datetime
 from drawille import Canvas
 
 INPUT_DIM = (492, 46)
-FILTER_MIN = 0.01
-FILTER_MAX = 0.45
-THRESHOLD = 60
-BANNER_V_START = 0.19
-BANNER_V_END = 0.28
-BANNER_H_START = 0.23
-BANNER_H_END = 0.77
+
 
 TF_LOGGING = False # Set to true to enable TensorFlow logging
 
@@ -25,7 +17,7 @@ def gen_seed():
 
 class Args:
     model = None
-    video = None
+    video = []
     rect = []
     data = []
     processes = 1
@@ -48,7 +40,7 @@ def parse_args(arg_list=None):
             args.model = arg_value
         elif arg_key in ["--video"]:
             # Specify a video file
-            args.video = arg_value
+            args.video.append(arg_value)
         elif arg_key in ["--rect"]:
             # Specify rectangles
             try:
@@ -65,6 +57,9 @@ def parse_args(arg_list=None):
             # Specify the degree of parallelism
             try:
                 args.processes = int(arg_value)
+                if args.processes < 1:
+                    print("Must specify processes >= 1")
+                    exit(1)
             except ValueError:
                 raise ValueError(f"Expected integer for argument {arg_key}, got {arg_value}")
         elif arg_key in ["--config", "-c"]:
@@ -76,20 +71,23 @@ def parse_args(arg_list=None):
         else:
             raise ValueError(f"Unknown argument: {arg_key}")
 
+    
+    
     return args
 
-def preinit_tensorflow():
+def preinit_tensorflow(use_gpu=False):
     if not TF_LOGGING:
         # Set TensorFlow Verbosity to Error
         os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
         os.environ["AUTOGRAPH_VERBOSITY"] = "0"
     print("Initializing TensorFlow...")
+    
     import tensorflow as tf
     import absl.logging
     tf.get_logger().setLevel('ERROR')
     absl.logging.set_verbosity(absl.logging.ERROR)
-    # Our workflow is not suitable for GPU
-    tf.config.set_visible_devices([], 'GPU')
+    if not use_gpu:
+        tf.config.set_visible_devices([], 'GPU')
 
 def clean_text(text):
     if not text:
@@ -109,66 +107,7 @@ def import_labels(captialize=False):
 
 
 
-def get_image_score(image):
-    """convert numpy image to percentage of black (non-white) pixels"""
-    if image.shape != (INPUT_DIM[1], INPUT_DIM[0], 1):
-        raise ValueError(f"Expected image of shape {INPUT_DIM[1], INPUT_DIM[0], 1}, got {image.shape}")
-    white_count = 0
-    total_count = 0
-    for row in image:
-        for pixel in row:
-            if pixel > 128:
-                white_count += 1
-            total_count += 1
-    return 1 - white_count / total_count
 
-
-def is_score_valid(score):
-    return FILTER_MIN <= score <= FILTER_MAX
-
-
-def image_from_whole_frame(img):
-    # get the dimensions of the image
-    height, width, _ = img.shape
-
-    # calculate the start and end coordinates for cropping
-    v_start_coord = int(BANNER_V_START * height)
-    v_end_coord = int(BANNER_V_END * height)
-    h_start_coord = int(BANNER_H_START * width)
-    h_end_coord = int(BANNER_H_END * width)
-
-    img = img[v_start_coord:v_end_coord, h_start_coord:h_end_coord]
-    return image_from_cropped_frame(img)
-
-
-def image_from_cropped_frame(cropped_frame):
-    image = cv2.cvtColor(cropped_frame, cv2.COLOR_BGR2GRAY)
-    image = cv2.resize(image, INPUT_DIM, interpolation=cv2.INTER_AREA)
-    _, image = cv2.threshold(image, THRESHOLD, 255, cv2.THRESH_BINARY)
-    return image_from_resized_frame(image)
-
-
-def image_from_resized_frame(resized_frame, dtype=np.uint8, value=255):
-    shape = resized_frame.shape
-
-    if len(shape) == 3:
-        height, width, _ = shape
-        accessor = lambda i, j: resized_frame[i][j][0]
-    elif len(shape) == 2:
-        height, width = shape
-        accessor = lambda i, j: resized_frame[i][j]
-    else:
-        raise ValueError(f"Invalid shape: {shape}")
-    
-    if height != INPUT_DIM[1] or width != INPUT_DIM[0]:
-        raise ValueError(f"Invalid shape: {shape}")
-
-    cv2_image = np.empty((INPUT_DIM[1], INPUT_DIM[0], 1), dtype=dtype)
-    for i in range(INPUT_DIM[1]):
-        for j in range(INPUT_DIM[0]):
-            pixel = accessor(i, j)
-            cv2_image[i][j][0] = value if pixel > 128 else 0
-    return cv2_image
 
 def measure_sec(start=None):
     if not start:

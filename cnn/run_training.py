@@ -7,7 +7,7 @@ if __name__ == "__main__":
     if len(args.config) != 2:
         print(help_msg)
         exit(1)
-    preinit_tensorflow()
+    preinit_tensorflow(use_gpu="gpu" in args.flags)
 
 
 import tensorflow as tf
@@ -52,7 +52,16 @@ def run(data_path, config_path, workers):
     labels = import_labels()
 
     print(f"\rLoading data...")
-    training_dataset, total= create_dataset(config["data"]["training"], config["batch"], labels, workers, normalize=True)
+
+    partial_as_none = "partial_as_none" in config and bool(config["partial_as_none"])
+    training_dataset, total= create_dataset(
+        config["data"]["training"],
+        config["batch"],
+        labels,
+        workers,
+        normalize=True,
+        augment_empty_factor=config["augment_empty"],
+        partial_as_none=partial_as_none)
     validation_dataset, _ = create_dataset(config["data"]["validation"], config["batch"], labels, workers)
 
     print(f"\rLoading model...")
@@ -105,7 +114,7 @@ def create_model(config, num_labels) -> models.Sequential:
     for _ in range(config["convolution"]["rounds"]):
         model.add(
             layers.Conv2D(
-                2,
+                config["convolution"]["features"],
                 (3, 3),
                 activation='relu',
                 activity_regularizer=regularizers.L1L2(

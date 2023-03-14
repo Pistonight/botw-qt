@@ -1,5 +1,6 @@
 import tensorflow as tf
 import numpy as np
+
 from common_util import INPUT_DIM
 
 class Runner:
@@ -12,7 +13,6 @@ class Runner:
         self.output_tensor_index = output_details[0]['index']
 
         interpreter.allocate_tensors()
-
         self.interpreter = interpreter
 
     def run_image(self, image):
@@ -69,3 +69,20 @@ def _process_model_output(output_tensor):
     predicted_idx = np.argmax(scores)
     confidence = 100 * scores[predicted_idx]
     return predicted_idx, confidence.numpy().item()
+
+runner_instance = None
+def init_runner_singleton(model_path, batch_size, lock):
+    global runner_instance
+    lock.acquire()
+    # Print to the current line
+    print("\033[A\033[A\r")
+    runner_instance = BatchRunner(model_path, batch_size)
+    lock.release()
+
+def singleton_run_batch_with_paths(task):
+    global runner_instance
+    image_batch, label_batch, path_batch = task
+    predicted_labels, predicted_confidences = runner_instance.run_batch(image_batch)
+    out_image_paths = [ x.decode("utf-8") for x in path_batch ]
+    actual_labels = [ x.item() for x in label_batch ]
+    return out_image_paths, actual_labels, predicted_labels, predicted_confidences

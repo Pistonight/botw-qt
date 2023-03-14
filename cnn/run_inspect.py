@@ -3,6 +3,7 @@ import json
 import os
 import inquirer
 import cv2
+from threading import Thread
 from common_util import parse_args, display_image, preinit_tensorflow, measure_str
 if __name__ == "__main__":
     args = parse_args()
@@ -12,7 +13,7 @@ if __name__ == "__main__":
     preinit_tensorflow()
 from common_dataset import read_image_from
 
-def process_wrong(wrong_data, wrong_path):
+def process_wrong(wrong_data, wrong_path, skip_harmless):
     start_time = measure_str()
     out = []
     wrong_data = [ d for d in wrong_data if os.path.exists(d["image"]) ]
@@ -24,6 +25,9 @@ def process_wrong(wrong_data, wrong_path):
         current_label = os.path.basename(data_dir)
         data_dir = os.path.dirname(data_dir)
         predicted_label = data["predicted"]
+        if predicted_label == "none" and skip_harmless:
+            out.append(data)
+            continue
 
         partial_dir = data_dir[:-4] if data_dir.endswith(".par") else data_dir+".par"
         non_partial_dir = data_dir[:-4] if data_dir.endswith(".par") else data_dir
@@ -37,7 +41,8 @@ def process_wrong(wrong_data, wrong_path):
         print(display_image(image))
         cv2.destroyAllWindows()
         cv2.imshow(image_path, cv2.imread(image_path))
-        cv2.waitKey(1)
+        cv2.waitKey(50)
+        
         print()
         print(f"Image: {image_path}")
         print(f"Prediction: {predicted_label} @ {data['confidence']}")
@@ -60,6 +65,7 @@ def process_wrong(wrong_data, wrong_path):
             )
         ]
         answers = inquirer.prompt(questions)
+        
         if not answers:
             exit(1)
         choice = choices.index(answers["choice"])
@@ -96,7 +102,7 @@ if __name__ == "__main__":
     with open(args.config[0], "r") as f:
         wrong_data = json.load(f)
 
-    out = process_wrong(wrong_data, args.config[0])
+    out = process_wrong(wrong_data, args.config[0], "skip-harmless" in args.flags)
     if out:
         with open(args.config[0], "w") as f:
             json.dump(out, f, indent=2)

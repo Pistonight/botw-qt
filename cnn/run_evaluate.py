@@ -13,9 +13,10 @@ import json
 import yaml
 from tqdm import tqdm
 import math
+import multiprocessing
 
 from common_util import import_labels, measure_str
-from common_runner import BatchRunner
+from common_runner import init_runner_singleton, singleton_run_batch_with_paths
 from common_dataset import create_dataset
 
 def evaluate_model(model_path, data_paths, output_path, processes):
@@ -23,25 +24,29 @@ def evaluate_model(model_path, data_paths, output_path, processes):
     quest_labels = import_labels()
     batch_size = processes
 
-    
-    dataset, total = create_dataset(data_paths, batch_size, quest_labels, processes, keep_path=True)
-    runner = BatchRunner(model_path, batch_size)
-    
+    # Use half of the workers for dataset loading and half for running the model
+    workers = processes//2
+
+    dataset, total = create_dataset(data_paths, batch_size, quest_labels, workers=workers, keep_path=True)
 
     image_paths = []
     actual_labels = []
     predicted_labels = []
     predicted_confidences = []
 
-    print("Running model...")
+    lock = multiprocessing.RLock()
+    tqdm.set_lock(lock)
 
-    for image_batch, label_batch, path_batch in tqdm(dataset.as_numpy_iterator(), total=math.ceil(total / batch_size), unit="batch", leave=False):
-        l, c = runner.run_batch(image_batch)
-        for i in range(len(image_batch)):
-            image_paths.append(path_batch[i].decode("utf-8"))
-            actual_labels.append(label_batch[i].item())
-        predicted_labels.extend(l)
-        predicted_confidences.extend(c)
+    print("Running model...")
+    with multiprocessing.Pool(processes=workers, initializer=init_runner_singleton, initargs=(model_path, batch_size, lock)) as pool:
+        for image_paths_batch, actual_labels_batch, predicted_labels_batch, predicted_confidences_batch in tqdm(
+            pool.imap(singleton_run_batch_with_paths, dataset.as_numpy_iterator()),
+            total=math.ceil(total / batch_size), unit="batch", leave=False
+        ):
+            image_paths.extend(image_paths_batch)
+            actual_labels.extend(actual_labels_batch)
+            predicted_labels.extend(predicted_labels_batch)
+            predicted_confidences.extend(predicted_confidences_batch)
 
     print("\rEvaluating...")
     

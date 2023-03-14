@@ -5,6 +5,9 @@ epoch: 10
 # Batch size. You can try adjusting this for better hardware utilization
 batch: 32
 
+# Add empty (fully white) pictures. This is a multiplier to total number of training images
+augment_empty: 0.6
+
 # Parameter for how much random translation used to augment the data. 0.05 = 5%
 random_translation:
   height: 0.05
@@ -17,6 +20,8 @@ noise: 0.06
 convolution:
   # How many rounds of (convolution + max pooling)
   rounds: 2
+  # How many features
+  features: 3
   # regularization
   l1: 0
   l2: 0.0006

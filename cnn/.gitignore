@@ -8,6 +8,7 @@ data/
 *.pyc
 *.tflite
 *.png
+!empty.png
 *.zip
 *.mp4
 *.mkv

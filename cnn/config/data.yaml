@@ -6,7 +6,13 @@ data:
   - data/piston838.par
   - data/limcube946
   - data/limcube946.par
-
-  validation:
+  - data/bings1532
+  - data/bings1532.par
   - data/newborn940
   - data/newborn940.par
+  
+  validation:
+  - data/pancake920
+  - data/pancake920.par
+  - data/crazy1232
+  - data/crazy1232.par
