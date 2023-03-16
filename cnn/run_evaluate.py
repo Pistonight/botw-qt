@@ -38,6 +38,7 @@ def evaluate_model(model_path, data_paths, output_path, processes):
     tqdm.set_lock(lock)
 
     print("Running model...")
+    print()
     with multiprocessing.Pool(processes=workers, initializer=init_runner_singleton, initargs=(model_path, batch_size, lock)) as pool:
         for image_paths_batch, actual_labels_batch, predicted_labels_batch, predicted_confidences_batch in tqdm(
             pool.imap(singleton_run_batch_with_paths, dataset.as_numpy_iterator()),

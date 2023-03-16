@@ -1,5 +1,5 @@
 make-client MODEL:
     cp models/{{MODEL}}.tflite ../client/botwqt.tflite
-    cp common.py ../client
-    cp runner.py ../client
+    cp common_util.py ../client
+    cp common_runner.py ../client
     cp quests.txt ../client

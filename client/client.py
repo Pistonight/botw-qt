@@ -3,17 +3,23 @@ import json
 import time
 import os
 import threading
+from bitarray import bitarray
+import numpy as np
 import websocket
 
-from common import preinit_tensorflow, display_image, import_labels, decode_decompressed_image, input_from_image
+from common_util import preinit_tensorflow, display_image, import_labels, INPUT_DIM
 if __name__ == "__main__":
     preinit_tensorflow()
 import tensorflow as tf
-from runner import ModelRunner
+from common_runner import Runner
 
 MODEL = "botwqt.tflite"
-CONFIDENCE_THRESHOLD = 100
+CONFIDENCE_THRESHOLD = 97
 PORT = "8899"
+
+# Need to see 2 in the last 5 to mark a quest
+HISTORY = 5
+SEE_COUNT = 2
 
 COLOR_RESET = "\033[0m"
 COLOR_SELECTED = "\033[1;33m"
@@ -223,19 +229,43 @@ class Runtime:
         discovered_list.sort()
         undiscovered_list.sort()
         return discovered_list, undiscovered_list
+    
+class History:
+    mem: list
+    idx: int
+    count: list
+    
+    def __init__(self, num_labels):
+        self.mem = [0] * HISTORY
+        self.idx = 0
+        self.count = [0] * num_labels
+
+    def add(self, label):
+        # Remove oldest label from count
+        if self.mem[self.idx] != 0:
+            self.count[self.mem[self.idx]] -= 1
+        # Add new label to count
+        self.mem[self.idx] = label
+        self.idx = (self.idx + 1) % HISTORY
+        self.count[label] += 1
+
+    def get_count(self, label):
+        return self.count[label]
 
 class Client:
     screen: Screen
     runtime: Runtime
     port: int
+    history: History
     
     def __init__(self, screen, runtime, port):
         self.screen = screen
         self.runtime = runtime
         self.port = port
+        self.history = History(len(runtime.quests))
 
     def run(self):
-        runner = ModelRunner(MODEL)
+        runner = Runner(MODEL)
         self.screen.image = self.screen.fit("Waiting for connection...", self.screen.cols)
         self.screen.update(redraw_image=True)
         ws = websocket.WebSocket()
@@ -252,7 +282,7 @@ class Client:
                     message = ws.recv()
                     try:
                         image = decode_decompressed_image(bytes.fromhex(message))
-                        quest, confidence = runner.run_one(input_from_image(image))
+                        quest, confidence = runner.run_image(image)
                         image = display_image(image)
                         if confidence < CONFIDENCE_THRESHOLD:
                             quest = 0
@@ -261,7 +291,8 @@ class Client:
                         quest = 0
 
                     self.screen.image = image
-                    if quest != 0:
+                    self.history.add(quest)
+                    if quest != 0 and self.history.get_count(quest) > SEE_COUNT:
                         runtime.mark(quest)
                         self.screen.discovered_list, self.screen.undiscovered_list = runtime.get_lists()
                         self.screen.update(redraw_image=True, redraw_discovered_quests=True, redraw_undiscovered_quests=True)
@@ -271,6 +302,14 @@ class Client:
                 self.screen.image = self.screen.image = self.screen.fit("Reconnecting...", self.screen.cols)
                 self.screen.update(redraw_image=True)
 
+def decode_decompressed_image(raw):
+    ba = bitarray(endian="big")
+    ba.frombytes(raw)
+    cv2_image = np.zeros((INPUT_DIM[1], INPUT_DIM[0], 1), dtype=np.float32)
+    for i in range(INPUT_DIM[1]):
+        for j in range(INPUT_DIM[0]):
+            cv2_image[i][j][0] = 1 if ba[i*INPUT_DIM[0]+j] else 0
+    return cv2_image
 
     
 if __name__ == "__main__":

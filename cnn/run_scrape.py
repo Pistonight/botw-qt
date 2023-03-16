@@ -294,6 +294,7 @@ def apply_labels(output_directory, model_path, processes):
     tqdm.set_lock(lock)
 
     print("\rLabeling images...")
+    print()
 
     kept_count = 0
     with multiprocessing.Pool(processes=workers, initializer=init_runner_singleton, initargs=(model_path, batch_size, lock)) as pool:

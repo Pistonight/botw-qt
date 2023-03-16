@@ -1,17 +1,19 @@
 # mk9 -> mk10
-#   Increased L1 regularization
+#   Reduced training epoches
+#   Increased noise
+#   Increased augment empty
 
 # use null for random seed
 seed: null
 # Number of epochs to train
-epoch: 10
+epoch: 8
 # Batch size. You can try adjusting this for better hardware utilization
 batch: 32
 # If partial images should be treated as none when training
 partial_as_none: True
 
 # Add empty (fully white) pictures. This is a multiplier to total number of training images
-augment_empty: 0.65
+augment_empty: 0.7
 
 # Parameter for how much random translation used to augment the data. 0.05 = 5%
 random_translation:
@@ -19,7 +21,7 @@ random_translation:
   width: 0.03
 
 # Parameter for how much noise to add (standard deviation)
-noise: 0.06
+noise: 0.065
 
 # Convolutional layers
 convolution:
@@ -29,7 +31,7 @@ convolution:
   # How many features
   features: 16
   # regularization
-  l1: 0.00015
+  l1: 0.0001
   l2: 0.0006
 
 # Dense layer
@@ -37,5 +39,5 @@ dense:
   # Number of neurons
   size: 288
   # regularization
-  l1: 0.00015
+  l1: 0.0001
   l2: 0.0006
