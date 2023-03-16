@@ -22,9 +22,9 @@ Check if your OBS version matches the one stated in the release page.
 
 ## Installation
 1. You need python 3.10.x installed in the system. You can download it from https://www.python.org/downloads/.
-1. Download the 2 `zip` files from the [release](https://github.com/iTNTPiston/botw-qt/releases) page.
-1. For the OBS plugin, extract the `zip` file and copy the 2 folders `data` and `obs-plugins` to your OBS directory, like you would when installing any obs plugin.
-1. For the python program, extract the `zip` file. There's a `setup.bat` script that you can run to automatically install on windows. To manually install:
+1. Download the client and backend `zip` files from the [release](https://github.com/iTNTPiston/botw-qt/releases) page.
+1. Install the backend by extracting the `zip` file and copy the 2 folders `data` and `obs-plugins` to your OBS directory, like you would when installing any obs plugin.
+1. For the client, extract the `zip` file. There's a `setup.bat` script that you can run to automatically install on windows. To manually install:
     ```
     pip install -r requirements.txt
     ```

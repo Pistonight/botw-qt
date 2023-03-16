@@ -13,3 +13,4 @@
 **/.Brewfile.lock.json
 
 deps/
+*.zip

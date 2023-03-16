@@ -5,3 +5,4 @@ quests.txt
 common_util.py
 common_runner.py
 *.tflite
+*.zip
