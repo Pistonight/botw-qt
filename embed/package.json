@@ -1,0 +1,10 @@
+{
+  "name": "webworker",
+  "devDependencies": {
+    "@tensorflow/tfjs-backend-wasm": "^4.19.0",
+    "@tensorflow/tfjs-core": "^4.19.0",
+    "@tensorflow/tfjs-tflite": "^0.0.1-alpha.10",
+    "@types/bun": "^1.1.1",
+    "typescript": "5.4.5"
+  }
+}

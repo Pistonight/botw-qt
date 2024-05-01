@@ -1,0 +1,33 @@
+version: '3'
+
+tasks:
+  install:
+    desc: Install Dependencies
+    cmds:
+    - bun install {{.CLI_ARGS}}
+  
+  build:
+    desc: Build the WebWorker Output Package
+    deps:
+    - download-model
+    cmds:
+    - bunx --bun tsc
+    - bun build src/index.ts src/worker.ts --outdir dist --minify
+    - coreutils cp -R src/static/** dist
+
+  serve:
+    desc: Serve the dist folder (not watching)
+    cmds:
+    - bun serve.ts
+  
+  clean:
+    desc: Clean the dist folder
+    cmds:
+    - coreutils rm -rf dist
+
+  download-model:
+    desc: Download the TFLite model from release
+    cmds:
+    - wget -O dist/botwqt.tflite https://github.com/Pistonight/botw-qt/releases/download/v0.1.0-beta/v9.tflite
+    status:
+    - coreutils test -f dist/botwqt.tflite

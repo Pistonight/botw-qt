@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>BotW Quest Tracker</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+        }
+    </style>
+    <!-- Import @tensorflow/tfjs-core -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
+<!-- Adds the CPU backend -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-cpu"></script>
+<!--
+  Import @tensorflow/tfjs-tflite
+
+  Note that we need to explicitly load dist/tf-tflite.min.js so that it can
+  locate WASM module files from their default location (dist/).
+-->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-tflite/dist/tf-tflite.min.js"></script>
+</head>
+<body>
+    <p id="output"></p>
+    <script src="worker.js"></script>
+</body>
+</html>
